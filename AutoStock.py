@@ -20,8 +20,8 @@ DISCORD_WEBHOOK_URL = _cfg['DISCORD_WEBHOOK_URL']
 DISCORD_WEBHOOK_LOG_URL = _cfg['DISCORD_WEBHOOK_LOG_URL']
 URL_BASE = _cfg['URL_BASE']
 CHARGE = _cfg['CHARGE']
+USER = _cfg['USER']
 
-USER='seism'
 # LOG_PICE는 마지막 매수 금액보다 현재 금액이 얼마만큼 낮을 경우 추가 매수할 것인가를 지정함
 # 설정한 가격보다 차이나는 경우는 판단과 매수 사이에 지연이 있어 주식 가격이 변경되어 발생함
 # (매수 가격근 지정하지 않음, 매수 시점에 거래 가능 금액으로 바로 매수함)

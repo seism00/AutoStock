@@ -1,0 +1,48 @@
+#홈페이지에서 API서비스 신청시 받은 Appkey, Appsecret 값 설정
+APP_KEY: ""
+APP_SECRET: ""
+
+#계좌번호 앞 8자리
+CANO: ""
+#계좌번호 뒤 2자리
+ACNT_PRDT_CD: "01"
+
+#실전투자
+URL_BASE: "https://openapi.koreainvestment.com:9443"
+#모의투자
+#URL_BASE: "https://openapivts.koreainvestment.com:29443"
+
+#디스코드 웹훅 URL
+DISCORD_WEBHOOK_URL: ""
+
+#디스코드 웹훅 URL LOG
+DISCORD_WEBHOOK_LOG_URL: ""
+
+
+# 매수 하한 가격
+# 매수한 가장낮은 가격에서 LOW_PICE를 뺀 값이 현재 값보다 작을 경우 매수
+LOW_PICE: "26"
+
+# 매도 상한 가격
+# 매수한 가장낮은 가격에서 HIGH_PICE를 더한 값이 현재 값보다 클경우 매도
+HIGH_PICE: "400"
+
+# 추가 매수 수량
+# 매수 조건이 되면 추가로 BUY_CNT 만큼 추가 매수함
+BUY_CNT: "1"
+
+# 일 최대 매수 수량
+# 전일 주식 수량에서 DAY_MAX_BUY_CNT를 더한 개수가 당일 주식 수량보다
+# 많을 경우 추가 매수를 하지 않음 (매도 조건일 경우 매도는 가능)
+DAY_MAX_BUY_CNT: "60"
+#
+
+# 주식 개수가 0개일 경우 다시 주시 매시수를 시작할 지 유무를 나타냄
+# 0: 계속 주시매수 진행
+# 1: 주식 개수가 0이면 주식 매수를 중지함
+STOP_FLAG: "0"
+
+# BanKIS ETF : 0.0146527
+CHARGE: "0.0146527"
+USER: "seism"
+
