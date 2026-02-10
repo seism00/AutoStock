@@ -738,7 +738,7 @@ def organize_v1 (code):
     while True:
         #send_message_log(f" LOOP loop_cnt = {loop_cnt}")
         loop_cnt = loop_cnt + 1
-        if loop_cnt > 500:
+        if loop_cnt > 100:
             break
 
         result = 0
@@ -1385,6 +1385,7 @@ def buy_stocks (sym):
 
 
     send_message_log ("- 5 return buy_stocks ------")
+    time.sleep(10)
     return 1
 
 
