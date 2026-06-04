@@ -18,6 +18,8 @@ DISCORD_WEBHOOK_URL: ""
 #디스코드 웹훅 URL LOG
 DISCORD_WEBHOOK_LOG_URL: ""
 
+USER: "seism"
+TICKER_SYMBOL: "069500"
 
 # 매수 하한 가격
 # 매수한 가장낮은 가격에서 LOW_PICE를 뺀 값이 현재 값보다 작을 경우 매수
@@ -25,11 +27,12 @@ LOW_PICE: "26"
 
 # 매도 상한 가격
 # 매수한 가장낮은 가격에서 HIGH_PICE를 더한 값이 현재 값보다 클경우 매도
-HIGH_PICE: "400"
+HIGH_PICE: "1500"
 
 # 추가 매수 수량
 # 매수 조건이 되면 추가로 BUY_CNT 만큼 추가 매수함
 BUY_CNT: "1"
+MAX_BUY_CNT_OF_DAY: "10"
 
 # 일 최대 매수 수량
 # 전일 주식 수량에서 DAY_MAX_BUY_CNT를 더한 개수가 당일 주식 수량보다
@@ -44,5 +47,4 @@ STOP_FLAG: "0"
 
 # BanKIS ETF : 0.0146527
 CHARGE: "0.0146527"
-USER: "seism"
 
