@@ -2,6 +2,7 @@
 
 import json
 import time
+import fcntl
 import sys
 import os
 
@@ -27,14 +28,10 @@ DISCORD_WEBHOOK_URL = _cfg['DISCORD_WEBHOOK_URL']
 DISCORD_WEBHOOK_LOG_URL = _cfg['DISCORD_WEBHOOK_LOG_URL']
 URL_BASE = _cfg['URL_BASE']
 CHARGE = _cfg['CHARGE']
-USER = _cfg['USER']
 
-<<<<<<< Updated upstream
-=======
 USER = _cfg['USER']
 TICKER_SYMBOL = _cfg['TICKER_SYMBOL']
 MAX_BUY_CNT_OF_DAY = int(_cfg['MAX_BUY_CNT_OF_DAY'])
->>>>>>> Stashed changes
 # LOG_PICE는 마지막 매수 금액보다 현재 금액이 얼마만큼 낮을 경우 추가 매수할 것인가를 지정함
 # 설정한 가격보다 차이나는 경우는 판단과 매수 사이에 지연이 있어 주식 가격이 변경되어 발생함
 # (매수 가격근 지정하지 않음, 매수 시점에 거래 가능 금액으로 바로 매수함)
@@ -44,6 +41,8 @@ MAX_BUY_CNT = int(_cfg['BUY_CNT'])
 DAY_MAX_BUY_CNT = int(_cfg['DAY_MAX_BUY_CNT'])
 STOP_FLAG = int(_cfg['STOP_FLAG'])
 
+if MAX_BUY_CNT < 1:
+    MAX_BUY_CNT = 1
 
 msg_low_price = 0
 
@@ -64,6 +63,7 @@ if MAX_BUY_CNT_OF_DAY < 10:
     print("ERROR: MAX_BUY_CNT_OF_DAY Not Found")
     MAX_BUY_CNT_OF_DAY = 10
 print(f"MAX_BUY_CNT_OF_DAY={MAX_BUY_CNT_OF_DAY}")
+
 
 def send_message_log(msg):
     now = datetime.now()
@@ -105,6 +105,148 @@ def send_message_monitor(msg):
     #print(message)
     send_message_log (message)
 
+
+
+
+# 락 파일 경로 (라즈베리파이의 메모리 기반 경로 사용)
+LOCK_FILE = "/tmp/korea_invest_api.lock"
+
+###########################
+###########################
+###########################
+def safe_api_request_token(url, headers, params, method="GET"):
+    """
+    사용자님의 방식(json.dumps)을 수용한 공통 실행 함수
+    """
+    f = open(LOCK_FILE, 'w')
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        start_time = time.time()
+        max_duration = 30
+        wait_time = 1.0
+
+        while True:
+            send_message_log("safe_api_request_token")
+            if time.time() - start_time > max_duration:
+                send_message_log("[공통] 타임아웃 초과로 락 양보")
+                break
+
+            try:
+                # API 호출 간 최소 간격 (초당 거래건수 보호)
+                time.sleep(0.5)
+
+                if method == "GET":
+                    # GET 방식은 params(쿼리스트링)로 전달
+                    res = requests.get(url, headers=headers, params=params)
+                else:
+                    # POST 방식은 사용자님의 방식인 json.dumps(params)로 전달
+                    # 이 때 params는 이미 딕셔너리 형태여야 함
+                    res = requests.post(url, headers=headers, data=json.dumps(params))
+
+                if res.status_code != 200:
+                    time.sleep(2)
+                    continue
+
+                data = res.json()
+                # 수정: rt_cd가 아예 없는 API(예: hashkey)는 HTTP 200이면 성공으로 간주
+                if "rt_cd" not in data:
+                    return data
+
+                # 성공(0)인 경우 데이터 반환 후 루프 종료
+                if data.get("rt_cd") == "0":
+                    return data
+
+                # 초당 거래건수 초과 시 재시도
+                msg = data.get("msg1", "")
+                if "초과" in msg:
+                    send_message_log(f"[공통] 거래건수 초과... {wait_time}초 후 재시도")
+                    time.sleep(wait_time)
+                    wait_time = min(wait_time + 1.0, 5.0)
+                    continue
+                else:
+                    # 주문 실패 등의 경우, 데이터를 반환하여 개별 함수에서 처리하게 함
+                    send_message_log(f"[공통] API 에러: {msg}")
+                    return data
+
+            except Exception as e:
+                send_message_log(f"[공통] 요청 중 예외 발생: {e}")
+                time.sleep(2)
+    finally:
+        # 2. 락 해제
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+    return None
+
+
+def safe_api_request(url, headers, params, method="GET"):
+    """
+    사용자님의 방식(json.dumps)을 수용한 공통 실행 함수
+    """
+    f = open(LOCK_FILE, 'w')
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        start_time = time.time()
+        max_duration = 30
+        wait_time = 1.0
+
+        while True:
+            send_message_log("safe_api_request")
+            if time.time() - start_time > max_duration:
+                send_message_log("[공통] 타임아웃 초과로 락 양보")
+                break
+
+            try:
+                # API 호출 간 최소 간격 (초당 거래건수 보호)
+                time.sleep(0.5)
+
+                if method == "GET":
+                    # GET 방식은 params(쿼리스트링)로 전달
+                    res = requests.get(url, headers=headers, params=params)
+                else:
+                    # POST 방식은 사용자님의 방식인 json.dumps(params)로 전달
+                    # 이 때 params는 이미 딕셔너리 형태여야 함
+                    res = requests.post(url, headers=headers, data=json.dumps(params))
+
+                if res.status_code != 200:
+                    time.sleep(2)
+                    continue
+
+                data = res.json()
+                # 수정: rt_cd가 아예 없는 API(예: hashkey)는 HTTP 200이면 성공으로 간주
+                if "rt_cd" not in data:
+                    return data
+
+                # 성공(0)인 경우 데이터 반환 후 루프 종료
+                if data.get("rt_cd") == "0":
+                    return data
+
+                # 초당 거래건수 초과 시 재시도
+                msg = data.get("msg1", "")
+                if "초과" in msg:
+                    send_message_log(f"[공통] 거래건수 초과... {wait_time}초 후 재시도")
+                    time.sleep(wait_time)
+                    wait_time = min(wait_time + 1.0, 5.0)
+                    continue
+                else:
+                    # 주문 실패 등의 경우, 데이터를 반환하여 개별 함수에서 처리하게 함
+                    send_message_log(f"[공통] API 에러: {msg}")
+                    return data
+
+            except Exception as e:
+                send_message_log(f"[공통] 요청 중 예외 발생: {e}")
+                time.sleep(2)
+    finally:
+        # 2. 락 해제
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+    return None
+
+###########################
+###########################
+###########################
+
+
+
 def get_access_token():
     """토큰 발급 및 파일 저장"""
     headers = {"content-type": "application/json"}
@@ -115,9 +257,13 @@ def get_access_token():
     }
     PATH = "oauth2/tokenP"
     URL = f"{URL_BASE}/{PATH}"
-    res = requests.post(URL, headers=headers, data=json.dumps(body))
-    time.sleep(1)
-    ACCESS_TOKEN = res.json()["access_token"]
+
+    # 공통 함수 호출
+    data_res = safe_api_request_token(URL, headers, body, method="POST")
+    if not data_res:
+        raise Exception("safe_api_request_token Error (None)")
+
+    ACCESS_TOKEN = data_res["access_token"]
 
     # 토큰을 파일에 저장
     with open(TOKEN_FILE, "w") as f:
@@ -158,31 +304,20 @@ def is_token_valid(token):
             "fid_cond_mrkt_div_code":"J",
             "fid_input_iscd":code,
         }
-        res = requests.get(URL, headers=headers, params=params)
-        time.sleep(1)
- 
-        data = res.json()
+
+        # 공통 함수 호출
+        data = safe_api_request_token(URL, headers, params, method="GET")
+        if not data:
+            raise Exception("safe_api_request_token Error (None)")
+
         if data.get("rt_cd") == "0":
             return True
- 
+
         return False
     except Exception:
         return False
 
 
-def hashkey(datas):
-    """암호화"""
-    PATH = "uapi/hashkey"
-    URL = f"{URL_BASE}/{PATH}"
-    headers = {
-    'content-Type' : 'application/json',
-    'appKey' : APP_KEY,
-    'appSecret' : APP_SECRET,
-    }
-    res = requests.post(URL, headers=headers, data=json.dumps(datas))
-    time.sleep(1)
-    hashkey = res.json()["HASH"]
-    return hashkey
 
 def get_current_price(code="005930"):
     """현재가 조회"""
@@ -197,10 +332,12 @@ def get_current_price(code="005930"):
     "fid_cond_mrkt_div_code":"J",
     "fid_input_iscd":code,
     }
-    res = requests.get(URL, headers=headers, params=params)
-    time.sleep(1)
 
-    data = res.json()
+    # 공통 함수 호출
+    data = safe_api_request(URL, headers, params, method="GET")
+    if not data:
+        raise Exception("safe_api_request Error (None)")
+
     if data.get("rt_cd") != "0":
         raise Exception(data.get("msg1"))
 
@@ -221,9 +358,12 @@ def get_target_price(code="005930"):
     "fid_org_adj_prc":"1",
     "fid_period_div_code":"D"
     }
-    res = requests.get(URL, headers=headers, params=params)
-    time.sleep(1)
-    data = res.json()
+
+    # 공통 함수 호출
+    data = safe_api_request(URL, headers, params, method="GET")
+    if not data:
+        raise Exception("safe_api_request Error (None)")
+
     if data.get("rt_cd") != "0":
         raise Exception(data.get("msg1"))
 
@@ -233,6 +373,7 @@ def get_target_price(code="005930"):
     send_message(f"{code} = 전일 고가: {stck_hgpr}원")
     stck_lwpr = int(data['output'][1]['stck_lwpr']) #전일 저가
     send_message(f"{code} = 전일 저가: {stck_lwpr}원")
+
 
 def get_stock_balance_now_struct(code):
     """주식 잔고조회"""
@@ -258,11 +399,12 @@ def get_stock_balance_now_struct(code):
         "CTX_AREA_FK100": "",
         "CTX_AREA_NK100": ""
     }
-    res = requests.get(URL, headers=headers, params=params)
-    time.sleep(1)
-    data = res.json()
-    if data.get("rt_cd") != "0":
-        raise Exception(data.get("msg1"))
+
+    # 공통 함수 호출
+    data = safe_api_request(URL, headers, params, method="GET")
+    if not data:
+        raise Exception("safe_api_request Error (None)")
+
 
     stock_list = data['output1']
     evaluation = data['output2']
@@ -278,7 +420,8 @@ def get_stock_balance_now(code):
     """주식 잔고조회"""
     PATH = "uapi/domestic-stock/v1/trading/inquire-balance"
     URL = f"{URL_BASE}/{PATH}"
-    headers = {"Content-Type":"application/json",
+    headers = {
+        "Content-Type":"application/json",
         "authorization":f"Bearer {ACCESS_TOKEN}",
         "appKey":APP_KEY,
         "appSecret":APP_SECRET,
@@ -298,11 +441,12 @@ def get_stock_balance_now(code):
         "CTX_AREA_FK100": "",
         "CTX_AREA_NK100": ""
     }
-    res = requests.get(URL, headers=headers, params=params)
-    time.sleep(1)
-    data = res.json()
-    if data.get("rt_cd") != "0":
-        raise Exception(data.get("msg1"))
+
+    # 공통 함수 호출
+    data = safe_api_request(URL, headers, params, method="GET")
+    if not data:
+        raise Exception("safe_api_request Error (None)")
+
     stock_list = data['output1']
     evaluation = data['output2']
     stock_dict = {}
@@ -377,11 +521,12 @@ def get_stock_balance():
         "CTX_AREA_FK100": "",
         "CTX_AREA_NK100": ""
     }
-    res = requests.get(URL, headers=headers, params=params)
-    time.sleep(1)
-    data = res.json()
-    if data.get("rt_cd") != "0":
-        raise Exception(data.get("msg1"))
+
+    # 공통 함수 호출
+    data = safe_api_request(URL, headers, params, method="GET")
+    if not data:
+        raise Exception("safe_api_request Error (None)")
+
     stock_list = data['output1']
     evaluation = data['output2']
     stock_dict = {}
@@ -417,20 +562,48 @@ def get_balance():
         "CMA_EVLU_AMT_ICLD_YN": "Y",
         "OVRS_ICLD_YN": "Y"
     }
-    res = requests.get(URL, headers=headers, params=params)
-    time.sleep(1)
-    data = res.json()
-    if data.get("rt_cd") != "0":
-        raise Exception(data.get("msg1"))
+
+    # 공통 함수 호출
+    data = safe_api_request(URL, headers, params, method="GET")
+    if not data:
+        raise Exception("safe_api_request Error (None)")
+
     cash = data['output']['ord_psbl_cash']
     send_message_log(f"주문 가능 현금 잔고: {cash}원")
     return int(cash)
 
+#####################################
+#####################################
+#####################################
+#####################################
+#####################################
+def hashkey(datas):
+    PATH = "uapi/hashkey"
+    URL = f"{URL_BASE}/{PATH}"
+    headers = {
+        'content-Type' : 'application/json',
+        'appKey' : APP_KEY,
+        'appSecret' : APP_SECRET,
+    }
+
+    data_res = safe_api_request(URL, headers, datas, method="POST")
+
+    # 수정: rt_cd를 체크하지 않고 HASH 키가 있는지 확인
+    if data_res and "HASH" in data_res:
+        return data_res.get("HASH")
+
+    # 실패 시 로그 출력
+    send_message_log(f"[hashkey] 발급 실패 응답: {data_res}")
+    return None
+
+#####################################
+#####################################
 def buy(code="005930", qty="1"):
     """주식 시장가 매수"""
     PATH = "uapi/domestic-stock/v1/trading/order-cash"
     URL = f"{URL_BASE}/{PATH}"
-    data = {
+
+    data_payload = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT_PRDT_CD,
         "PDNO": code,
@@ -438,32 +611,46 @@ def buy(code="005930", qty="1"):
         "ORD_QTY": str(int(qty)),
         "ORD_UNPR": "0",
     }
-    headers = {"Content-Type":"application/json",
+
+    # --- 분리 처리 시작 ---
+    # 1. 해쉬키를 먼저 따로 받습니다.
+    h_key = hashkey(data_payload)
+
+    # 2. 해쉬키 발급에 실패했다면 주문을 중단합니다.
+    if h_key is None:
+        send_message(f"[매수 중단] 해쉬키 발급 실패: {code}")
+        raise Exception("safe_api_request Error (None)")
+    # --- 분리 처리 끝 ---
+
+    # 3. 해쉬키가 성공했을 때만 헤더를 구성합니다.
+    headers = {
+        "Content-Type":"application/json",
         "authorization":f"Bearer {ACCESS_TOKEN}",
         "appKey":APP_KEY,
         "appSecret":APP_SECRET,
         "tr_id":"TTTC0802U",
         "custtype":"P",
-        "hashkey" : hashkey(data)
+        "hashkey" : h_key  # 받아놓은 해쉬키 사용
     }
-    res = requests.post(URL, headers=headers, data=json.dumps(data))
-    time.sleep(1)
-    if res.json()['rt_cd'] == '0':
-        send_message_log (f"[매수 성공]{str(res.json())}")
 
+    # 4. 실제 주문 API 호출
+    data_res = safe_api_request(URL, headers, data_payload, method="POST")
+    if not data_res:
+        raise Exception("safe_api_request Error (None)")
+
+    if data_res.get('rt_cd') == '0':
+        send_message_log (f"[매수 성공]{str(data_res)}")
         return True
 
-    send_message(f"[매수 실패]{str(res.json())}")
-    if "장운영일자가 주문일과 상이합니다" in str(res.json()):
-        send_message_log("장운영일자가 주문일과 상이합니다")
-        sys.exit()
+    send_message(f"[매수 실패]{str(data_res)}")
     return False
 
+#####################################
 def sale(code="005930", qty="1"):
     """주식 시장가 매도"""
     PATH = "uapi/domestic-stock/v1/trading/order-cash"
     URL = f"{URL_BASE}/{PATH}"
-    data = {
+    data_payload = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT_PRDT_CD,
         "PDNO": code,
@@ -471,24 +658,37 @@ def sale(code="005930", qty="1"):
         "ORD_QTY": qty,
         "ORD_UNPR": "0",
     }
+
+    # --- 분리 처리 시작 ---
+    # 1. 해쉬키를 먼저 따로 받습니다.
+    h_key = hashkey(data_payload)
+
+    # 2. 해쉬키 발급에 실패했다면 주문을 중단합니다.
+    if h_key is None:
+        send_message(f"[매수 중단] 해쉬키 발급 실패: {code}")
+        raise Exception("safe_api_request Error (None)")
+    # --- 분리 처리 끝 ---
+
+    # 3. 해쉬키가 성공했을 때만 헤더를 구성합니다.
     headers = {"Content-Type":"application/json",
         "authorization":f"Bearer {ACCESS_TOKEN}",
         "appKey":APP_KEY,
         "appSecret":APP_SECRET,
         "tr_id":"TTTC0801U",
         "custtype":"P",
-        "hashkey" : hashkey(data)
+        "hashkey" : h_key  # 받아놓은 해쉬키 사용
     }
-    res = requests.post(URL, headers=headers, data=json.dumps(data))
-    time.sleep(1)
-    if res.json()['rt_cd'] == '0':
-        send_message_log (f"[매도 성공]{str(res.json())}")
+
+    # 4. 실제 주문 API 호출
+    data_res = safe_api_request(URL, headers, data_payload, method="POST")
+    if not data_res:
+        raise Exception("safe_api_request Error (None)")
+
+    if data_res.get('rt_cd') == '0':
+        send_message_log (f"[매도 성공]{str(data_res)}")
         return True
 
-    send_message(f"[매도 실패]{str(res.json())}")
-    if "장운영일자가 주문일과 상이합니다" in str(res.json()):
-        send_message_log("장운영일자가 주문일과 상이합니다")
-        sys.exit()
+    send_message(f"[매도 실패]{str(data_res)}")
     return False
 
 ##############################################################
@@ -545,7 +745,7 @@ def get_my_oder(code):
 
     cnt = 0
     my_price = []
-    my_price = get_list_my_oder(code)
+    my_price = get_list_my_order(code)
     if len(my_price) <= 0:
         send_message_log("my_price no item")
         send_message_log ("- 2 return get_my_oder ------")
@@ -564,7 +764,7 @@ def get_my_oder(code):
 ##############################################################
 ##############################################################
 ##############################################################
-def get_list_my_oder(sym):
+def get_list_my_order(sym):
 
     conn = sqlite3.connect(DB_FILE)
 
@@ -588,7 +788,7 @@ def buy_Offsetting_Processing_v1 (code, current_price):
     send_message_log (f"buy_Offsetting_Processing_v1 ({code}, {current_price})")
 
     my_price = []
-    my_price = get_list_my_oder(code)
+    my_price = get_list_my_order(code)
     if len(my_price) < 20:
 # 보유 주식수가 10보다 작을 경우 매수한다.
         return 0
@@ -843,7 +1043,7 @@ def organize_v1 (code):
     send_message_log (f"organize_v1 ({code})")
 
     my_price = []
-    my_price = get_list_my_oder(code)
+    my_price = get_list_my_order(code)
 
     if len (my_price) < 30:
         send_message_log (f"len (my_price) = {len(my_price)}")
@@ -995,7 +1195,7 @@ def my_oder_reinvest(code, reinvest=10):
     # 파일을 읽기 모드('r')로 엽니다.
     # 파일을 읽어 my_price에 추가한다.
     # 50보다 작은 경우 무시한다.
-    my_price = get_list_my_oder(code)
+    my_price = get_list_my_order(code)
 
 # 수익 투자 금액을 5원씩 나눴을때 개수 가 전체 주식 수보다 작을 경우 재투자 하지 않는다.
     if len(my_price) < ((reinvest // 5)+10):
@@ -1021,7 +1221,6 @@ def my_oder_reinvest(code, reinvest=10):
                 my_price[idx] = new1
                 bak_reivenst = bak_reivenst - 5
             else:
-
                 send_message_log(
                     "update_one_price() 실패"
                 )
@@ -1038,7 +1237,6 @@ def my_oder_reinvest(code, reinvest=10):
                 my_price[idx] = new1
                 bak_reivenst = 0
             else:
-
                 send_message_log(
                     "update_one_price() 실패"
                 )
@@ -1137,7 +1335,7 @@ def buy_stocks (sym):
         return 0
 
 
-    my_price = get_list_my_oder(sym)
+    my_price = get_list_my_order(sym)
 
     current_price = get_current_price(sym)
     if not (current_price % 5 == 0):
@@ -1189,6 +1387,7 @@ def buy_stocks (sym):
         return 0
 
 
+    time.sleep(10)
     stock, evaluation = get_stock_balance_now_struct (sym)
     if len(stock) > 0:
         send_message_log (f" {stock['hldg_qty']} : 보유수량")
@@ -1206,9 +1405,11 @@ def buy_stocks (sym):
                     send_message_log_current( f" {sym})최대 매수 :{current_price}원 : MAX_BUY_CNT_OF_DAY = {MAX_BUY_CNT_OF_DAY}")
              
                     send_message_log ("- 3 return buy_stocks ------")
+                    time.sleep(10)
                     return 0
 
 
+    time.sleep(10)
     stock_cash, evl_amount, stock_qty, tot_evlu_amt = get_stock_balance_now (sym)
 
     send_message_log( f"{sym} = 보유현금 : {total_cash}원 (매수전)")
@@ -1228,7 +1429,7 @@ def buy_stocks (sym):
     send_message_log( f"{sym} = 매수성공: ")
     delay_count = 0
     while True:
-        time.sleep(1)
+        time.sleep(10)
         tmp_stock_cash, tmp_evl_amount, tmp_stock_qty, tmp_tot_evlu_amt = get_stock_balance_now (sym)
         send_message_log ( f"{sym} = tmp_stock_cash = {tmp_stock_cash}원 : tmp_stock_qty = {tmp_stock_qty}")
         delay_count = delay_count + 1
@@ -1253,7 +1454,6 @@ def buy_stocks (sym):
 
 
     send_message_log ("- 5 return buy_stocks ------")
-    time.sleep(10)
     return 1
 
 
@@ -1265,7 +1465,7 @@ def sell_Offsetting_Processing (sym):
     send_message_log("sell_Offsetting_Processing")
     send_message_log(f"HIGH_PICE={HIGH_PICE}-10")
 
-    my_price = get_list_my_oder(sym)
+    my_price = get_list_my_order(sym)
     if len(my_price) <= 0:
         send_message_log(f"len(my_price) = {len(my_price)}")
         send_message_log ("- 0 return sell_Offsetting_Processing ------")
@@ -1412,7 +1612,7 @@ def sell_stocks (sym):
     send_message_log("sell_stocks")
     send_message_log(f"HIGH_PICE={HIGH_PICE}")
 
-    my_price = get_list_my_oder(sym)
+    my_price = get_list_my_order(sym)
     tmp_current_cnt = len(my_price)
     if tmp_current_cnt < 1:
         send_message_log ("- 1 return sell_stocks ------")
@@ -1440,6 +1640,7 @@ def sell_stocks (sym):
     send_message_log_current ( f"sel:3 {sumprice}({current_price}): {tmp_current}+{HIGH_PICE}")
     send_message_log ( f"매도 ({tmp_current}+{HIGH_PICE}) < {current_price}")
 
+    time.sleep(10)
     stock_cash, evl_amount, stock_qty, tot_evlu_amt = get_stock_balance_now (sym)
     send_message_log ( f"{sym}) 주식금액     : {stock_cash}")
     send_message_log ( f"{sym}) 주식평가금액 : {evl_amount}")
@@ -1464,7 +1665,7 @@ def sell_stocks (sym):
     send_message_log ( f"({sym}) 매도성공: {tmp_current_price}")
     delay_count = 0
     while True:
-        time.sleep(1)
+        time.sleep(3)
         tmp_stock_cash, tmp_evl_amount, tmp_stock_qty, tmp_tot_evlu_amt = get_stock_balance_now (sym)
         send_message_log ( f"{sym} = tmp_evl_amount = {tmp_evl_amount}원 : tmp_stock_qty = {tmp_stock_qty}")
         delay_count = delay_count + 1
@@ -1556,7 +1757,7 @@ def sell_stocks (sym):
 
 def do_action(code):
     send_message_monitor (f"Action triggered at {datetime.now()}")
-    my_price = get_list_my_oder(code)
+    my_price = get_list_my_order(code)
     send_message_monitor( f"주식 코드: {code})")
     if len(my_price) > 0:
         send_message_monitor( f"최고금액 : {my_price[0]}원")
@@ -1571,6 +1772,7 @@ def do_action(code):
 
 
 
+    time.sleep(10)
     stock, evaluation = get_stock_balance_now_struct (code)
 
     if len(stock) > 0:
@@ -1631,7 +1833,6 @@ def init_db():
 # 자동매매 시작
 try:
 
-    init_db()
     send_message_log ("===============================")
     send_message_log ("== AutoStock.py Start =========")
     send_message_log (f"MAX_BUY_CNT_OF_DAY={MAX_BUY_CNT_OF_DAY}")
@@ -1656,6 +1857,7 @@ try:
     #    send_message("오늘은 평일입니다.")
 
 
+    init_db()
 
     tmp_current={}
     tmp_current_cnt={}
@@ -1667,7 +1869,7 @@ try:
     t_now = datetime.now()
     t_9 = t_now.replace(hour=9, minute=0, second=0, microsecond=0)
     t_8 = t_now.replace(hour=8, minute=0, second=0, microsecond=0)
-    t_exit = t_now.replace(hour=15, minute=25, second=0,microsecond=0)
+    t_exit = t_now.replace(hour=15, minute=22, second=0,microsecond=0)
     today = datetime.today().weekday()
     if today in (5, 6):  # 토요일이나 일요일이면 자동 종료
         send_message_log ("1: 주말 입니다.")
@@ -1745,23 +1947,22 @@ try:
 
 
 
-
-
     total_cash = get_balance() # 보유 현금 조회
     send_message_log (f"주문 가능 현금 잔고: {total_cash}원")
 
     last_minute = None  # 이전에 동작한 분 정보를 저장
 
     send_message_log ("===============================")
-    my_price = get_list_my_oder(ticker)
+    my_price = get_list_my_order(ticker)
     send_message_log ( "장부주식수: "+ str(len(my_price)) +"개")
     tmp_stock_cash, tmp_evl_amount, tmp_stock_qty, tmp_tot_evlu_amt = get_stock_balance_now (ticker)
     send_message_log ( f"{ticker} = tmp_stock_cash = {tmp_stock_cash}원 : tmp_stock_qty = {tmp_stock_qty}")
 
 
+    time.sleep(10)
     stock, evaluation = get_stock_balance_now_struct (ticker)
-    real_qty = stock['hldg_qty']
-    book_qty = get_db_count(ticker)
+    real_qty = int(stock['hldg_qty'])
+    book_qty = int(get_db_count(ticker))
 
     if real_qty != book_qty:
         send_message( f"수량 불일치 real={real_qty} book={book_qty}")
@@ -1774,7 +1975,7 @@ try:
         send_message_log ("=== while loop ================")
         t_now = datetime.now()
         t_9 = t_now.replace(hour=9, minute=0, second=0, microsecond=0)
-        t_exit = t_now.replace(hour=15, minute=29, second=0,microsecond=0)
+        t_exit = t_now.replace(hour=15, minute=22, second=0,microsecond=0)
 
         stop_file_name = "stop_"+now.strftime("%Y%m%d")
         if os.path.isfile(stop_file_name):
@@ -1806,6 +2007,32 @@ try:
 
         organize_v1 (ticker)
 
+        total_cash = get_balance() # 보유 현금 조회
+        current_price = get_current_price(ticker)
+        my_price = get_list_my_order(ticker)
+        with open(f"/tmp/autostock_{USER}.txt", 'w') as fd_tmp:
+            if my_price:
+                max_price = max(my_price)
+                min_price = min(my_price)
+                total_price = sum(my_price)
+                count = len(my_price)
+                diff = max_price - min_price
+                fd_tmp.write(f"최고금액 : {max_price:,} 원\n")
+                fd_tmp.write(f"최저금액 : {min_price:,} 원\n")
+                fd_tmp.write(f"차액 : {diff:,} 원\n")
+                fd_tmp.write(f"장부주식수: {count:,} 개\n")
+                fd_tmp.write(f"장부총금액 : {total_price:,} 원\n")
+                fd_tmp.write(f"보유금액 : {total_cash:,} 원\n")
+                fd_tmp.write(f"현재가격 [{ticker}]: {current_price:,} 원\n")
+            else:
+                fd_tmp.write("최고금액 : 0 원\n")
+                fd_tmp.write("최저금액 : 0 원\n")
+                fd_tmp.write("차액 : 0 원\n")
+                fd_tmp.write("장부주식수: 0 개\n")
+                fd_tmp.write("장부총금액 : 0 원\n")
+                fd_tmp.write(f"보유금액 : {total_cash:,} 원\n")
+                fd_tmp.write(f"현재가격 [{ticker}]: {current_price:,} 원\n")
+
 
         result_sell_1 = sell_Offsetting_Processing(ticker)
         send_message_log(f"sell_Offsetting_Processing result_sell_1 = {result_sell_1}")
@@ -1830,7 +2057,7 @@ try:
 
 except Exception as error_msg:
     send_message( f"[오류 발생]{error_msg}")
-    time.sleep(1)
+    time.sleep(3)
     #if os.path.isfile(TOKEN_FILE):
     #    send_message_log(f"os.remove({TOKEN_FILE})")
     #    os.remove(TOKEN_FILE)
